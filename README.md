@@ -1,5 +1,9 @@
 # Plane Radar for the Elecrow CrowPanel 7-inch
 
+<img width="800" alt="The radar on the CrowPanel, centred on LaGuardia in New York at the 25 km range" src="docs/images/crowpanel-radar.gif" />
+
+*New York traffic around LaGuardia at 25 km. The frames are 25 seconds apart, so aircraft jump here; on the panel they glide.*
+
 A port of [ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) by MatixYo to the **[Elecrow CrowPanel Basic 7-inch](https://www.elecrow.com/esp32-display-7-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html)** touch display (ESP32-S3, 800×480). It shows live **ADS-B** traffic from [adsb.fi](https://opendata.adsb.fi/) around your location on a radar you drive by touch.
 
 The original firmware, for an ESP32-C3 Super Mini with a 1.28″ round display, is still in this repository as the `supermini` build target; see [The original round-display target](#the-original-round-display-target).
