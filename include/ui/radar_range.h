@@ -24,12 +24,23 @@ struct RangePreset {
 
 constexpr float kRing3ToOuterKm = 4.0f / 3.0f;
 
+#ifdef PLANE_RADAR_CROWPANEL
+// The 7-inch radar labels every ring, so there the stated range is the outer
+// ring itself and ring3_km is simply the range's name.
+constexpr RangePreset kRangePresets[] = {
+    {5.0f, 5.0f},
+    {10.0f, 10.0f},
+    {25.0f, 25.0f},
+    {50.0f, 50.0f},
+};
+#else
 constexpr RangePreset kRangePresets[] = {
     {5.0f, 5.0f * kRing3ToOuterKm},
     {10.0f, 10.0f * kRing3ToOuterKm},
     {15.0f, 15.0f * kRing3ToOuterKm},
     {25.0f, 25.0f * kRing3ToOuterKm},
 };
+#endif
 
 constexpr size_t kRangePresetCount =
     sizeof(kRangePresets) / sizeof(kRangePresets[0]);
@@ -38,6 +49,8 @@ constexpr size_t kRangePresetCount =
 void rangeInit();
 /** Cycle preset and save to flash. */
 void rangeNext();
+void rangePrevious();
+void rangeSet(uint8_t index);
 const RangePreset& rangeCurrent();
 uint8_t rangeIndex();
 /** ADSB fetch radius (km): scaled to screen edge so beyond-ring dots have data. */
@@ -45,6 +58,8 @@ float fetchRadiusKm();
 
 bool useMiles();
 bool showRunways();
+void setUseMiles(bool enabled);
+void setShowRunways(bool enabled);
 /** WiFi portal checkbox: "T" = miles, otherwise km. */
 void saveMilesFromPortal(const char* checkbox_value);
 void saveRunwaysFromPortal(const char* checkbox_value);

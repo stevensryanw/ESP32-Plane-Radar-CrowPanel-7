@@ -44,6 +44,10 @@ void IRAM_ATTR onBootButtonIsr() {
 }
 
 void initBootButton() {
+#ifdef PLANE_RADAR_CROWPANEL
+  // CrowPanel RGB data uses GPIO 9. Wi-Fi reset is exposed in the touch UI.
+  return;
+#else
   pinMode(config::kBootPin, INPUT_PULLUP);
   if (s_boot_interrupt_attached) {
     return;
@@ -51,6 +55,7 @@ void initBootButton() {
   attachInterrupt(digitalPinToInterrupt(static_cast<uint8_t>(config::kBootPin)),
                   onBootButtonIsr, CHANGE);
   s_boot_interrupt_attached = true;
+#endif
 }
 
 namespace {
@@ -394,12 +399,19 @@ bool wifiShowsSetupScreenOnBoot() {
 }
 
 bool wifiBootButtonPressed() {
+#ifdef PLANE_RADAR_CROWPANEL
+  return false;
+#else
   return digitalRead(config::kBootPin) == LOW;
+#endif
 }
 
 void bootButtonInit() { initBootButton(); }
 
 bool bootButtonConsumeTap() {
+#ifdef PLANE_RADAR_CROWPANEL
+  return false;
+#else
   portENTER_CRITICAL(&s_boot_mux);
   const bool tap = s_boot_tap_pending;
   if (tap) {
@@ -407,9 +419,13 @@ bool bootButtonConsumeTap() {
   }
   portEXIT_CRITICAL(&s_boot_mux);
   return tap;
+#endif
 }
 
 void bootButtonPollLongPress() {
+#ifdef PLANE_RADAR_CROWPANEL
+  return;
+#else
   if (wifiBootButtonPressed()) {
     portENTER_CRITICAL(&s_boot_mux);
     if (!s_boot_is_down) {
@@ -431,6 +447,7 @@ void bootButtonPollLongPress() {
     portEXIT_CRITICAL(&s_boot_mux);
     s_long_press_handled = false;
   }
+#endif
 }
 
 void wifiResetCredentialsAndReboot() {

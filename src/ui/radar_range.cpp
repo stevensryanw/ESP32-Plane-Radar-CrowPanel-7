@@ -15,7 +15,11 @@ constexpr char kPrefsNamespace[] = "planeradar";
 constexpr char kPrefsRangeKey[] = "rangeIdx";
 constexpr char kPrefsMilesKey[] = "useMiles";
 constexpr char kPrefsRunwaysKey[] = "showRwys";
+#ifdef PLANE_RADAR_CROWPANEL
+constexpr uint8_t kDefaultRangeIndex = 0;  // 5 km
+#else
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
+#endif
 constexpr float kKmPerMile = 1.609344f;
 
 Preferences s_prefs;
@@ -66,8 +70,16 @@ void rangeInit() {
     return;
   }
   const uint8_t saved = s_prefs.getUChar(kPrefsRangeKey, kDefaultRangeIndex);
-  s_range_index =
-      (saved < kRangePresetCount) ? saved : kDefaultRangeIndex;
+  if (saved < kRangePresetCount) {
+    s_range_index = saved;
+  } else if (saved == kRangePresetCount) {
+    // The CrowPanel previously had one additional 100 km preset. Preserve a
+    // user's widest-range choice by migrating that old index to the new 50 km
+    // maximum instead of unexpectedly returning to the 5 km default.
+    s_range_index = static_cast<uint8_t>(kRangePresetCount - 1);
+  } else {
+    s_range_index = kDefaultRangeIndex;
+  }
   s_use_miles = s_prefs.getBool(kPrefsMilesKey, false);
   s_show_runways = s_prefs.getBool(kPrefsRunwaysKey, true);
   s_prefs.end();
@@ -75,6 +87,20 @@ void rangeInit() {
 
 void rangeNext() {
   s_range_index = static_cast<uint8_t>((s_range_index + 1) % kRangePresetCount);
+  saveRangeIndex();
+}
+
+void rangePrevious() {
+  s_range_index = static_cast<uint8_t>(
+      (s_range_index + kRangePresetCount - 1) % kRangePresetCount);
+  saveRangeIndex();
+}
+
+void rangeSet(uint8_t index) {
+  if (index >= kRangePresetCount || index == s_range_index) {
+    return;
+  }
+  s_range_index = index;
   saveRangeIndex();
 }
 
@@ -92,6 +118,22 @@ float fetchRadiusKm() {
 bool useMiles() { return s_use_miles; }
 
 bool showRunways() { return s_show_runways; }
+
+void setUseMiles(bool enabled) {
+  if (s_use_miles == enabled) {
+    return;
+  }
+  s_use_miles = enabled;
+  saveUseMiles();
+}
+
+void setShowRunways(bool enabled) {
+  if (s_show_runways == enabled) {
+    return;
+  }
+  s_show_runways = enabled;
+  saveShowRunways();
+}
 
 void saveMilesFromPortal(const char* checkbox_value) {
   s_use_miles = portalCheckboxChecked(checkbox_value);
