@@ -59,6 +59,15 @@ namespace {
 constexpr char kWifiPrefsNamespace[] = "wifi";
 constexpr char kPrefsForcePortalKey[] = "portal";
 
+// Whether to serve the settings page on the home network once Wi-Fi is up.
+// It is WiFiManager's portal, so it has no password, and with it come pages
+// that upload new firmware and change or erase the Wi-Fi settings. That is
+// meant for a network of your own. Whoever builds this for a network they do
+// not trust can leave the page out with -DPLANE_RADAR_LAN_PORTAL=0.
+#ifndef PLANE_RADAR_LAN_PORTAL
+#define PLANE_RADAR_LAN_PORTAL 1
+#endif
+
 bool s_force_config_portal = false;
 WiFiManager s_wm;
 bool s_wm_configured = false;
@@ -231,7 +240,7 @@ void ensureWifiManager() {
   s_wm_configured = true;
 }
 
-void startLanWebPortal() {
+[[maybe_unused]] void startLanWebPortal() {
   if (!wifiLinkUp() || s_wm.getWebPortalActive() ||
       s_wm.getConfigPortalActive()) {
     return;
@@ -440,9 +449,11 @@ bool wifiReconnect() {
 void wifiLoop() {
   ensureWifiManager();
   if (wifiLinkUp()) {
+#if PLANE_RADAR_LAN_PORTAL
     if (!s_wm.getWebPortalActive() && !s_wm.getConfigPortalActive()) {
       startLanWebPortal();
     }
+#endif
     if (s_wm.getWebPortalActive() || s_wm.getConfigPortalActive()) {
       bootButtonPollLongPress();
       s_wm.process();
