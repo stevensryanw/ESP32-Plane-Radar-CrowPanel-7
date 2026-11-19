@@ -1,6 +1,6 @@
 # Plane Radar for the Elecrow CrowPanel 7-inch
 
-A port of [ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) by MatixYo to the **Elecrow CrowPanel Basic 7-inch** touch display (ESP32-S3, 800×480). It shows live **ADS-B** traffic from [adsb.fi](https://opendata.adsb.fi/) around your location on a radar you drive by touch.
+A port of [ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) by MatixYo to the **[Elecrow CrowPanel Basic 7-inch](https://www.elecrow.com/esp32-display-7-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html)** touch display (ESP32-S3, 800×480). It shows live **ADS-B** traffic from [adsb.fi](https://opendata.adsb.fi/) around your location on a radar you drive by touch.
 
 The original firmware, for an ESP32-C3 Super Mini with a 1.28″ round display, is still in this repository as the `supermini` build target; see [The original round-display target](#the-original-round-display-target).
 
@@ -17,7 +17,7 @@ The full list is in [docs/CROWPANEL.md](docs/CROWPANEL.md).
 
 ## Hardware
 
-- **Elecrow CrowPanel Basic 7-inch HMI**, model DIS08070H: ESP32-S3-WROOM-1-N4R8, 800×480 RGB TFT, GT911 capacitive touch, 8 MB PSRAM. This is not the newer CrowPanel Advance.
+- **[Elecrow CrowPanel Basic 7-inch HMI](https://www.elecrow.com/esp32-display-7-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html)**, model DIS08070H: ESP32-S3-WROOM-1-N4R8, 800×480 RGB TFT, GT911 capacitive touch, 8 MB PSRAM. This is not the newer CrowPanel Advance.
 - A USB-C data cable and a 5 V / 2 A supply.
 - Optional: a microSD card for CSV logging, and the printable feet in [stand/](stand/README.md).
 
