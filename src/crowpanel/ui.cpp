@@ -2244,7 +2244,7 @@ void createSettingsOverlay() {
                       nullptr);
   lv_obj_add_event_cb(s_brightness_slider, brightnessChanged, LV_EVENT_RELEASED, nullptr);
   s_brightness_value = addLabel(s_settings_overlay, "75%", &lv_font_montserrat_14);
-  lv_obj_set_pos(s_brightness_value, 300, 58);
+  lv_obj_set_pos(s_brightness_value, 310, 58);
 
   lv_obj_set_pos(addLabel(s_settings_overlay, "Home alert", &lv_font_montserrat_16,
                           kColorMuted),
@@ -2257,7 +2257,7 @@ void createSettingsOverlay() {
                       nullptr);
   lv_obj_add_event_cb(s_proximity_slider, proximityChanged, LV_EVENT_RELEASED, nullptr);
   s_proximity_value = addLabel(s_settings_overlay, "5 km", &lv_font_montserrat_14);
-  lv_obj_set_pos(s_proximity_value, 652, 58);
+  lv_obj_set_pos(s_proximity_value, 660, 58);
 
   s_labels_switch = addSettingSwitch(s_settings_overlay, kLeft, 100, "Aircraft labels");
   s_trails_switch = addSettingSwitch(s_settings_overlay, kLeft, 140, "Flight trails");
