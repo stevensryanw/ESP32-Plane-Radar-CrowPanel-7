@@ -3,12 +3,19 @@
 #include <Preferences.h>
 
 #include <algorithm>
+#include <cstring>
 #include <iterator>
+
+#include "crowpanel/time_zone_data.h"
+#include "crowpanel/time_zones.h"
 
 namespace crowpanel::settings {
 namespace {
 
 constexpr char kNamespace[] = "cpui";
+
+static_assert(time_zone_data::kLongestRule < kClockRuleLength,
+              "a time-zone rule does not fit in State::clock_rule");
 State s_state;
 
 bool validRefresh(uint8_t seconds) {
@@ -53,6 +60,19 @@ void init() {
   s_state.theme = theme <= static_cast<uint8_t>(Theme::HighContrast)
                       ? static_cast<Theme>(theme)
                       : Theme::Night;
+  const uint8_t zone = prefs.getUChar("clockZone", 0);
+  s_state.clock_zone = zone <= static_cast<uint8_t>(ClockZone::Chosen)
+                           ? static_cast<ClockZone>(zone)
+                           : ClockZone::RadarLocation;
+  if (prefs.isKey("clockRule")) {
+    prefs.getString("clockRule", s_state.clock_rule, sizeof(s_state.clock_rule));
+  }
+  // A rule from firmware with a different list could not be shown as chosen.
+  if (s_state.clock_zone == ClockZone::Chosen &&
+      time_zones::choiceForRule(s_state.clock_rule) < 0) {
+    s_state.clock_zone = ClockZone::RadarLocation;
+  }
+  s_state.clock_24_hour = prefs.getBool("clock24", true);
   prefs.end();
 }
 
@@ -112,6 +132,32 @@ void setTheme(Theme theme) {
   s_state.theme = theme;
   writePreference(
       [&](Preferences& p) { p.putUChar("theme", static_cast<uint8_t>(theme)); });
+}
+
+void setClockZone(ClockZone zone) {
+  if (zone == ClockZone::Chosen) {
+    return;
+  }
+  s_state.clock_zone = zone;
+  writePreference(
+      [&](Preferences& p) { p.putUChar("clockZone", static_cast<uint8_t>(zone)); });
+}
+
+void setClockRule(const char* rule) {
+  if (time_zones::choiceForRule(rule) < 0) {
+    return;
+  }
+  strlcpy(s_state.clock_rule, rule, sizeof(s_state.clock_rule));
+  s_state.clock_zone = ClockZone::Chosen;
+  writePreference([&](Preferences& p) {
+    p.putString("clockRule", s_state.clock_rule);
+    p.putUChar("clockZone", static_cast<uint8_t>(ClockZone::Chosen));
+  });
+}
+
+void setClock24Hour(bool value) {
+  s_state.clock_24_hour = value;
+  writePreference([&](Preferences& p) { p.putBool("clock24", value); });
 }
 
 bool aircraftAltitudeVisible(bool on_ground, bool altitude_valid,

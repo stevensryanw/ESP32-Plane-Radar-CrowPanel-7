@@ -8,6 +8,7 @@
 #include "crowpanel/airport_catalog.h"
 #include "crowpanel/airports.h"
 #include "crowpanel/display.h"
+#include "crowpanel/local_clock.h"
 #include "crowpanel/logger.h"
 #include "crowpanel/model.h"
 #include "crowpanel/phone_location.h"
@@ -78,8 +79,11 @@ void chooseDefaultAirport() {
                                     airport.lon_e7 * 1e-7);
 }
 
+// Called each time Wi-Fi comes up. It is given the zone already in force
+// because configTime() would put the clock back on UTC, and setting a zone
+// again and again costs a little memory each time.
 void startClock() {
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  configTzTime(crowpanel::local_clock::rule(), "pool.ntp.org", "time.nist.gov");
 }
 
 void showRadar() {

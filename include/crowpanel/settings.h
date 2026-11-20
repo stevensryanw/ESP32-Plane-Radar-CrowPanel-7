@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace crowpanel::settings {
@@ -16,6 +17,16 @@ enum class Theme : uint8_t {
   Green,
   HighContrast,
 };
+
+/** Whose time the clock in the status strip keeps. */
+enum class ClockZone : uint8_t {
+  RadarLocation = 0,  // Wherever the radar is centred.
+  Utc,
+  Chosen,  // State::clock_rule, picked from the list on the settings screen.
+};
+
+/** Room for a time-zone rule (a POSIX TZ string) and the end of its string. */
+constexpr size_t kClockRuleLength = 48;
 
 /**
  * Seconds between ADS-B fetches the user can choose from. adsb.fi takes a new
@@ -36,6 +47,9 @@ struct State {
   uint8_t proximity_km = 5;
   AltitudeBand altitude_band = AltitudeBand::All;
   Theme theme = Theme::Night;
+  ClockZone clock_zone = ClockZone::RadarLocation;
+  char clock_rule[kClockRuleLength] = "";  // Used while clock_zone is Chosen.
+  bool clock_24_hour = true;
 };
 
 void init();
@@ -51,6 +65,11 @@ void setRefreshSeconds(uint8_t seconds);
 void setProximityKm(uint8_t km);
 void setAltitudeBand(AltitudeBand band);
 void setTheme(Theme theme);
+/** For RadarLocation and Utc. Choosing a zone by name is setClockRule(). */
+void setClockZone(ClockZone zone);
+/** Keeps the clock on one zone; ignores a rule the settings screen does not list. */
+void setClockRule(const char* rule);
+void setClock24Hour(bool value);
 
 bool aircraftAltitudeVisible(bool on_ground, bool altitude_valid, int32_t altitude_ft);
 

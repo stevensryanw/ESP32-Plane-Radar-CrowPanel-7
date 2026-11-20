@@ -46,7 +46,7 @@ Sidebar:
   distance, and red for an emergency squawk
 - The next five aircraft, nearest first, one line each: altitude colour,
   callsign, type, altitude, distance
-- A status strip with the aircraft count, Wi-Fi and UTC time; it turns into a
+- A status strip with the aircraft count, Wi-Fi and the time; it turns into a
   warning for lost Wi-Fi, stale data, or an emergency squawk
 
 Settings (the gear) and data:
@@ -59,6 +59,8 @@ Settings (the gear) and data:
 - **Find me** sets those coordinates from a phone's GPS: scan the code on the
   screen and tap once (see "Find me")
 - Night, green-scope, and high-contrast radar themes; brightness; km or miles
+- The clock keeps local time where the radar is centred, UTC, or a zone picked
+  from a list, and reads as 24-hour or 12-hour (see "The clock")
 - Military aircraft are named in amber
 - Optional CSV logging to `/plane-radar.csv` on microSD, with NTP timestamps
 - Wi-Fi, data-age, and HTTP-failure status, and the last good picture is kept
@@ -166,6 +168,41 @@ Three things about that server are deliberate, and each was measured:
   (`mbedtls_platform_set_calloc_free`) freed 33 KB per session and looked
   like the better answer, but 11 frames slipped in 45 connections with it and
   none without.
+
+## The clock
+
+The time at the right of the status strip is set from the network (NTP).
+**Settings → Time zone** chooses whose time it is:
+
+- **Radar location**, the default: local time where the radar is centred, so
+  it changes when the home airport does. Daylight saving is followed.
+- **UTC**, written the aviation way: `14:05Z`.
+- A zone from the list, each named by its cities, which keeps the clock on
+  your own time while the radar looks somewhere else.
+
+**24-hour clock** switches between `14:05 EDT` and `2:05 PM EDT`. The letters
+are the zone's own abbreviation; a zone without one shows its offset (`+04`).
+
+The panel works the zone out by itself from a map in the firmware, so the
+radar's position is not sent anywhere to find it. The map has quarter-degree
+cells: within about 30 km of a border between zones it can give the
+neighbouring zone, and picking the zone from the list puts that right.
+Compared with exact boundaries it gives the right time at 99.6% of the 15,211
+airports in the panel's table.
+
+The zones' rules are fixed when the firmware is built. When a country changes
+its clocks, build the table again and reflash:
+
+```bash
+pip install timezonefinder tzdata
+python3 scripts/build_crowpanel_time_zones.py
+```
+
+The script stops if any zone's rule gives a different time from the zone's own
+data on any day of the next five years, unless the script lists that zone
+with the reason. It lists one, built from tzdata 2026f: Cuba, which that data
+has staying on summer time through the winter of 2026-27, reads an hour behind
+until March 2027.
 
 ## Settings page on the network
 
@@ -422,6 +459,18 @@ are allocated in PSRAM, and no more than one TLS session besides the aircraft
 feed's is ever open: a route lookup, or a phone using **Find me**, not both.
 Up to 256 aircraft are parsed from a wide-radius response, and trails are
 kept for the nearest 96 and the pinned one.
+
+Local time is `crowpanel/time_zones` (the map lookup) and
+`crowpanel/local_clock`. The map and the list of zones are generated
+(`crowpanel/time_zone_data`, 76 KB of flash): the script samples
+timezonefinder's boundaries on a quarter-degree grid, gives sea within two
+degrees of a coast the land's zone and the rest ship's time, and stores each
+row as runs of cells. A cell names a rule, a POSIX TZ string such as
+`EST5EDT,M3.2.0,M11.1.0`, which the C library applies. That library (newlib)
+reads less than the standard allows, so the script checks every rule against
+what it does read; Greenland's change an hour before midnight becomes midnight.
+The clock looks its rule up each time it is drawn, which is how it follows the
+settings and the radar's centre without being told that they changed.
 
 LVGL keeps its widgets in a fixed pool of its own, 64 KB here (`LV_MEM_SIZE`
 in `platformio.ini`), of which about 45 KB is in use. If the pool runs out

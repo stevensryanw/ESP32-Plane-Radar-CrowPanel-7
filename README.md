@@ -14,8 +14,8 @@ The screen is a radar on the left and a sidebar on the right.
 
 - **Radar.** Aircraft coloured by altitude and drawn by type and size, each with a callsign and altitude tag, a trail behind it and a line to where it will be in a minute. Ranges of 5, 10, 25 and 50 km with every ring labelled, and airports with their runways.
 - **Card.** The nearest aircraft in the air, or the one you tap: callsign, type, operator, where it is flying from and to, altitude, speed, distance, and when and how near it will pass.
-- **List and status.** The next five aircraft, and a strip with the aircraft count, Wi-Fi and UTC time that turns into a warning when the data goes stale.
-- **Settings.** Refresh rate (2 to 10 s), altitude and ground filters, three themes, brightness, km or miles, a home-airport search, and **Find me**, which sets the radar's location from a phone's GPS.
+- **List and status.** The next five aircraft, and a strip with the aircraft count, Wi-Fi and the local time that turns into a warning when the data goes stale.
+- **Settings.** Refresh rate (2 to 10 s), altitude and ground filters, three themes, brightness, km or miles, a clock in local time, UTC or a zone you pick (12- or 24-hour), a home-airport search, and **Find me**, which sets the radar's location from a phone's GPS.
 
 The full list is in [docs/CROWPANEL.md](docs/CROWPANEL.md).
 

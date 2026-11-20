@@ -10,16 +10,18 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <ctime>
 #include <initializer_list>
 #include <iterator>
 
 #include "crowpanel/display.h"
 #include "crowpanel/geo.h"
+#include "crowpanel/local_clock.h"
 #include "crowpanel/logger.h"
 #include "crowpanel/model.h"
 #include "crowpanel/phone_location.h"
 #include "crowpanel/settings.h"
+#include "crowpanel/time_zone_data.h"
+#include "crowpanel/time_zones.h"
 #include "data/airline_names.h"
 #include "crowpanel/airport_catalog.h"
 #include "crowpanel/airports.h"
@@ -181,9 +183,11 @@ lv_obj_t* s_ground_switch = nullptr;
 lv_obj_t* s_logging_switch = nullptr;
 lv_obj_t* s_alerts_switch = nullptr;
 lv_obj_t* s_units_switch = nullptr;
+lv_obj_t* s_clock_24_switch = nullptr;
 lv_obj_t* s_altitude_dropdown = nullptr;
 lv_obj_t* s_refresh_dropdown = nullptr;
 lv_obj_t* s_theme_dropdown = nullptr;
+lv_obj_t* s_time_zone_dropdown = nullptr;
 lv_obj_t* s_sd_status = nullptr;
 lv_obj_t* s_home_airport_value = nullptr;
 
@@ -1591,7 +1595,7 @@ void updateStatusStrip() {
   const unsigned long success = services::adsb::lastSuccessMs();
   const unsigned long age_seconds = success == 0 ? 0 : (millis() - success) / 1000UL;
   char left[80];
-  char right[24] = "";
+  char right[8 + local_clock::kTextLength] = "";
   uint32_t fill = kColorScreen;
   uint32_t ink = kColorText;
   if (WiFi.status() != WL_CONNECTED) {
@@ -1607,13 +1611,8 @@ void updateStatusStrip() {
   } else {
     const unsigned count = static_cast<unsigned>(model::visibleAircraftCount());
     snprintf(left, sizeof(left), "%u aircraft", count);
-    char clock[8] = "";
-    const time_t now = time(nullptr);
-    if (now > 1700000000) {  // Set from the network; otherwise it reads 1970.
-      struct tm utc = {};
-      gmtime_r(&now, &utc);
-      snprintf(clock, sizeof(clock), "%02d:%02dZ", utc.tm_hour, utc.tm_min);
-    }
+    char clock[local_clock::kTextLength];
+    local_clock::format(clock, sizeof(clock));
     snprintf(right, sizeof(right), LV_SYMBOL_WIFI "  %s", clock);
   }
   if (fill != kColorScreen) {
@@ -1755,6 +1754,7 @@ void settingsSwitchChanged(lv_event_t* event) {
   }
   if (object == s_alerts_switch) settings::setAlertsEnabled(enabled);
   if (object == s_units_switch) ::ui::radar::setUseMiles(enabled);
+  if (object == s_clock_24_switch) settings::setClock24Hour(enabled);
   model::update();
   refreshData();
 }
@@ -1787,6 +1787,57 @@ void proximityChanged(lv_event_t* event) {
   }
 }
 
+// The time-zone list: wherever the radar is centred, UTC, then each of
+// time_zone_data::kChoices in order.
+constexpr uint16_t kZoneRowRadar = 0;
+constexpr uint16_t kZoneRowUtc = 1;
+constexpr uint16_t kZoneRowFirstChoice = 2;
+constexpr char kZoneRowsWithoutChoices[] = "Radar location\nUTC";
+
+uint16_t timeZoneRow(const settings::State& state) {
+  if (state.clock_zone == settings::ClockZone::Utc) {
+    return kZoneRowUtc;
+  }
+  const int choice = state.clock_zone == settings::ClockZone::Chosen
+                         ? time_zones::choiceForRule(state.clock_rule)
+                         : -1;
+  return choice < 0 ? kZoneRowRadar
+                    : static_cast<uint16_t>(kZoneRowFirstChoice + choice);
+}
+
+void timeZoneRowChosen(uint16_t row) {
+  if (row == kZoneRowRadar) {
+    settings::setClockZone(settings::ClockZone::RadarLocation);
+  } else if (row == kZoneRowUtc) {
+    settings::setClockZone(settings::ClockZone::Utc);
+  } else if (static_cast<size_t>(row - kZoneRowFirstChoice) <
+             time_zone_data::kChoiceCount) {
+    const auto& choice = time_zone_data::kChoices[row - kZoneRowFirstChoice];
+    settings::setClockRule(time_zone_data::kRules[choice.rule]);
+  }
+}
+
+// The text of the time-zone list, one row to a line. It is long, and LVGL
+// would copy it into its own small pool, so it is kept in PSRAM and LVGL is
+// told to read it from there. Without that memory the list is the first two
+// rows alone.
+const char* timeZoneRows() {
+  size_t length = sizeof(kZoneRowsWithoutChoices);
+  for (size_t i = 0; i < time_zone_data::kChoiceCount; ++i) {
+    length += 1 + strlen(time_zone_data::kChoices[i].label);
+  }
+  char* rows = static_cast<char*>(heap_caps_malloc(length, MALLOC_CAP_SPIRAM));
+  if (rows == nullptr) {
+    return kZoneRowsWithoutChoices;
+  }
+  size_t used = strlcpy(rows, kZoneRowsWithoutChoices, length);
+  for (size_t i = 0; i < time_zone_data::kChoiceCount && used < length; ++i) {
+    used += snprintf(rows + used, length - used, "\n%s",
+                     time_zone_data::kChoices[i].label);
+  }
+  return rows;
+}
+
 void dropdownChanged(lv_event_t* event) {
   lv_obj_t* object = lv_event_get_target(event);
   const uint16_t selected = lv_dropdown_get_selected(object);
@@ -1802,6 +1853,9 @@ void dropdownChanged(lv_event_t* event) {
   } else if (object == s_theme_dropdown) {
     settings::setTheme(static_cast<settings::Theme>(selected));
     redrawRadar();
+  } else if (object == s_time_zone_dropdown) {
+    timeZoneRowChosen(selected);
+    updateStatusStrip();
   }
 }
 
@@ -1836,6 +1890,8 @@ void openSettings(lv_event_t*) {
   applySwitchState(s_logging_switch, state.logging_enabled);
   applySwitchState(s_alerts_switch, state.alerts_enabled);
   applySwitchState(s_units_switch, ::ui::radar::useMiles());
+  applySwitchState(s_clock_24_switch, state.clock_24_hour);
+  lv_dropdown_set_selected(s_time_zone_dropdown, timeZoneRow(state));
   lv_dropdown_set_selected(s_altitude_dropdown,
                            static_cast<uint16_t>(state.altitude_band));
   lv_dropdown_set_selected(s_theme_dropdown, static_cast<uint16_t>(state.theme));
@@ -2160,20 +2216,26 @@ lv_obj_t* addSettingSwitch(lv_obj_t* parent, int x, int y, const char* label_tex
 }
 
 void createSettingsOverlay() {
+  // As large as the airport picker. Inside the border and padding there is
+  // 740 by 440 to lay out in.
   s_settings_overlay = lv_obj_create(s_main_screen);
-  lv_obj_set_pos(s_settings_overlay, 50, 25);
-  lv_obj_set_size(s_settings_overlay, 700, 430);
+  lv_obj_set_pos(s_settings_overlay, 20, 10);
+  lv_obj_set_size(s_settings_overlay, 760, 460);
   setPanelStyle(s_settings_overlay, 0x071221);
   lv_obj_set_style_border_width(s_settings_overlay, 2, 0);
   lv_obj_set_style_border_color(s_settings_overlay, lv_color_hex(kColorAccent), 0);
   lv_obj_clear_flag(s_settings_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
+  constexpr int kLeft = 16;
+  constexpr int kRight = 386;  // The second column.
+
   lv_obj_t* title = addLabel(s_settings_overlay, "RADAR SETTINGS", &lv_font_montserrat_24);
   lv_obj_set_pos(title, 10, 4);
-  addButton(s_settings_overlay, 620, 0, 54, 42, LV_SYMBOL_CLOSE, closeSettings);
+  addButton(s_settings_overlay, 680, 0, 54, 42, LV_SYMBOL_CLOSE, closeSettings);
 
-  addLabel(s_settings_overlay, "Brightness", &lv_font_montserrat_16, kColorMuted);
-  lv_obj_set_pos(lv_obj_get_child(s_settings_overlay, 2), 16, 58);
+  lv_obj_set_pos(addLabel(s_settings_overlay, "Brightness", &lv_font_montserrat_16,
+                          kColorMuted),
+                 kLeft, 58);
   s_brightness_slider = lv_slider_create(s_settings_overlay);
   lv_obj_set_pos(s_brightness_slider, 120, 60);
   lv_obj_set_size(s_brightness_slider, 170, 18);
@@ -2184,75 +2246,86 @@ void createSettingsOverlay() {
   s_brightness_value = addLabel(s_settings_overlay, "75%", &lv_font_montserrat_14);
   lv_obj_set_pos(s_brightness_value, 300, 58);
 
-  addLabel(s_settings_overlay, "Home alert", &lv_font_montserrat_16, kColorMuted);
-  lv_obj_set_pos(lv_obj_get_child(s_settings_overlay, 5), 360, 58);
+  lv_obj_set_pos(addLabel(s_settings_overlay, "Home alert", &lv_font_montserrat_16,
+                          kColorMuted),
+                 kRight, 58);
   s_proximity_slider = lv_slider_create(s_settings_overlay);
-  lv_obj_set_pos(s_proximity_slider, 465, 60);
-  lv_obj_set_size(s_proximity_slider, 130, 18);
+  lv_obj_set_pos(s_proximity_slider, 491, 60);
+  lv_obj_set_size(s_proximity_slider, 150, 18);
   lv_slider_set_range(s_proximity_slider, 1, 25);
   lv_obj_add_event_cb(s_proximity_slider, proximityChanged, LV_EVENT_VALUE_CHANGED,
                       nullptr);
   lv_obj_add_event_cb(s_proximity_slider, proximityChanged, LV_EVENT_RELEASED, nullptr);
   s_proximity_value = addLabel(s_settings_overlay, "5 km", &lv_font_montserrat_14);
-  lv_obj_set_pos(s_proximity_value, 605, 58);
+  lv_obj_set_pos(s_proximity_value, 652, 58);
 
-  s_labels_switch = addSettingSwitch(s_settings_overlay, 16, 105, "Aircraft labels");
-  s_trails_switch = addSettingSwitch(s_settings_overlay, 16, 145, "Flight trails");
-  s_runways_switch = addSettingSwitch(s_settings_overlay, 16, 185, "Airport runways");
-  s_ground_switch = addSettingSwitch(s_settings_overlay, 16, 225, "Ground aircraft");
+  s_labels_switch = addSettingSwitch(s_settings_overlay, kLeft, 100, "Aircraft labels");
+  s_trails_switch = addSettingSwitch(s_settings_overlay, kLeft, 140, "Flight trails");
+  s_runways_switch = addSettingSwitch(s_settings_overlay, kLeft, 180, "Airport runways");
+  s_ground_switch = addSettingSwitch(s_settings_overlay, kLeft, 220, "Ground aircraft");
 
-  s_logging_switch = addSettingSwitch(s_settings_overlay, 360, 105, "microSD logging");
-  s_alerts_switch = addSettingSwitch(s_settings_overlay, 360, 145, "Awareness alerts");
-  s_units_switch = addSettingSwitch(s_settings_overlay, 360, 185, "Miles instead of km");
-  addLabel(s_settings_overlay, "Home airport", &lv_font_montserrat_16, kColorText);
-  lv_obj_set_pos(lv_obj_get_child(s_settings_overlay,
-                                  lv_obj_get_child_cnt(s_settings_overlay) - 1),
-                 360, 232);
+  s_logging_switch = addSettingSwitch(s_settings_overlay, kRight, 100, "microSD logging");
+  s_alerts_switch = addSettingSwitch(s_settings_overlay, kRight, 140, "Awareness alerts");
+  s_units_switch =
+      addSettingSwitch(s_settings_overlay, kRight, 180, "Miles instead of km");
+  s_clock_24_switch = addSettingSwitch(s_settings_overlay, kRight, 220, "24-hour clock");
+
+  lv_obj_set_pos(addLabel(s_settings_overlay, "Home airport", &lv_font_montserrat_16),
+                 kLeft, 272);
   s_home_airport_value =
       addLabel(s_settings_overlay, "Auto", &lv_font_montserrat_16, kColorAccent);
-  lv_obj_set_pos(s_home_airport_value, 482, 232);
-  addButton(s_settings_overlay, 585, 220, 90, 42, "Change", openAirportPicker);
+  lv_obj_set_pos(s_home_airport_value, 138, 272);
+  addButton(s_settings_overlay, 250, 260, 90, 42, "Change", openAirportPicker);
 
-  addLabel(s_settings_overlay, "Altitude", &lv_font_montserrat_14, kColorMuted);
-  lv_obj_set_pos(lv_obj_get_child(s_settings_overlay, lv_obj_get_child_cnt(s_settings_overlay) - 1),
-                 16, 282);
+  lv_obj_set_pos(addLabel(s_settings_overlay, "Time zone", &lv_font_montserrat_16),
+                 kRight, 272);
+  s_time_zone_dropdown = lv_dropdown_create(s_settings_overlay);
+  lv_dropdown_set_options_static(s_time_zone_dropdown, timeZoneRows());
+  lv_obj_set_pos(s_time_zone_dropdown, 476, 260);
+  lv_obj_set_size(s_time_zone_dropdown, 258, 42);
+  lv_obj_add_event_cb(s_time_zone_dropdown, dropdownChanged, LV_EVENT_VALUE_CHANGED,
+                      nullptr);
+
+  lv_obj_set_pos(addLabel(s_settings_overlay, "Altitude", &lv_font_montserrat_14,
+                          kColorMuted),
+                 kLeft, 318);
   s_altitude_dropdown = lv_dropdown_create(s_settings_overlay);
   lv_dropdown_set_options(s_altitude_dropdown,
                           "All altitudes\nBelow 10,000 ft\n10,000-30,000 ft\nAbove 30,000 ft");
-  lv_obj_set_pos(s_altitude_dropdown, 16, 305);
+  lv_obj_set_pos(s_altitude_dropdown, kLeft, 340);
   lv_obj_set_size(s_altitude_dropdown, 210, 42);
   lv_obj_add_event_cb(s_altitude_dropdown, dropdownChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  addLabel(s_settings_overlay, "Refresh", &lv_font_montserrat_14, kColorMuted);
-  lv_obj_set_pos(lv_obj_get_child(s_settings_overlay, lv_obj_get_child_cnt(s_settings_overlay) - 1),
-                 245, 282);
+  lv_obj_set_pos(addLabel(s_settings_overlay, "Refresh", &lv_font_montserrat_14,
+                          kColorMuted),
+                 245, 318);
   s_refresh_dropdown = lv_dropdown_create(s_settings_overlay);
   // One entry per settings::kRefreshChoices value, in the same order.
   lv_dropdown_set_options(s_refresh_dropdown,
                           "2 seconds\n3 seconds\n5 seconds\n10 seconds");
-  lv_obj_set_pos(s_refresh_dropdown, 245, 305);
+  lv_obj_set_pos(s_refresh_dropdown, 245, 340);
   lv_obj_set_size(s_refresh_dropdown, 145, 42);
   lv_obj_add_event_cb(s_refresh_dropdown, dropdownChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  addLabel(s_settings_overlay, "Theme", &lv_font_montserrat_14, kColorMuted);
-  lv_obj_set_pos(lv_obj_get_child(s_settings_overlay, lv_obj_get_child_cnt(s_settings_overlay) - 1),
-                 410, 282);
+  lv_obj_set_pos(addLabel(s_settings_overlay, "Theme", &lv_font_montserrat_14,
+                          kColorMuted),
+                 410, 318);
   s_theme_dropdown = lv_dropdown_create(s_settings_overlay);
   lv_dropdown_set_options(s_theme_dropdown, "Night\nGreen scope\nHigh contrast");
-  lv_obj_set_pos(s_theme_dropdown, 410, 305);
+  lv_obj_set_pos(s_theme_dropdown, 410, 340);
   lv_obj_set_size(s_theme_dropdown, 155, 42);
   lv_obj_add_event_cb(s_theme_dropdown, dropdownChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
   lv_obj_t* reset_wifi =
-      addButton(s_settings_overlay, 572, 300, 104, 48, "Reset Wi-Fi", wifiResetClicked);
+      addButton(s_settings_overlay, 630, 337, 104, 48, "Reset Wi-Fi", wifiResetClicked);
   lv_obj_set_style_text_font(lv_obj_get_child(reset_wifi, 0), &lv_font_montserrat_14, 0);
   s_sd_status = addLabel(s_settings_overlay, "microSD", &lv_font_montserrat_14,
                          kColorMuted);
-  lv_obj_set_pos(s_sd_status, 16, 372);
+  lv_obj_set_pos(s_sd_status, kLeft, 406);
   lv_obj_t* note = addLabel(s_settings_overlay,
                             "Wi-Fi/location portal: plane-radar.local",
                             &lv_font_montserrat_14, kColorMuted);
-  lv_obj_set_pos(note, 330, 372);
+  lv_obj_set_pos(note, kRight, 406);
 
   lv_obj_add_flag(s_settings_overlay, LV_OBJ_FLAG_HIDDEN);
 }
